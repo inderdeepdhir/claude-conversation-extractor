@@ -62,7 +62,8 @@ class ClaudeConversationExtractor:
         sessions = []
         if search_dir.exists():
             for jsonl_file in search_dir.rglob("*.jsonl"):
-                sessions.append(jsonl_file)
+                if jsonl_file.stem and not jsonl_file.stem.lower().startswith('agent-'):
+                    sessions.append(jsonl_file)
         return sorted(sessions, key=lambda x: x.stat().st_mtime, reverse=True)
 
     def extract_conversation(self, jsonl_path: Path, detailed: bool = False) -> List[Dict[str, str]]:
@@ -656,7 +657,7 @@ class ClaudeConversationExtractor:
 
             # Print formatted info
             print(f"\n{i}. 📁 {project}")
-            print(f"   📄 Session: {session_id[:8]}...")
+            print(f"   📄 Session: {session_id}")
             print(f"   📅 Modified: {modified.strftime('%Y-%m-%d %H:%M')}")
             print(f"   💬 Messages: {msg_count}")
             print(f"   💾 Size: {size_kb:.1f} KB")
@@ -918,16 +919,26 @@ Examples:
 
     elif args.extract:
         sessions = extractor.find_sessions()
+        session_ids = { jsonl_path.stem.lower() : i for i, jsonl_path in enumerate(sessions) }
 
         # Parse comma-separated indices
         indices = []
-        for num in args.extract.split(","):
-            try:
-                idx = int(num.strip()) - 1  # Convert to 0-based index
-                indices.append(idx)
-            except ValueError:
-                print(f"❌ Invalid session number: {num}")
+        for arg_part in args.extract.split(","):
+            id_or_num = arg_part.lower()
+            # first see if it matches a session-id
+            if id_or_num in session_ids:
+                indices.append(session_ids[id_or_num])
                 continue
+            num = id_or_num
+            # check if its a valid index, e.g. 1..n
+            try:                
+                idx = int(num.strip()) - 1  # Convert to 0-based index
+                if idx < len(sessions):
+                    indices.append(idx)
+                    continue
+            except ValueError:
+                pass
+            print(f"❌ Ignoring invalid session index: {arg_part}")
 
         if indices:
             print(f"\n📤 Extracting {len(indices)} session(s) as {args.format.upper()}...")
